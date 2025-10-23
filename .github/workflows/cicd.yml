@@ -16,7 +16,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
   security-check:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: compile
 
     steps:
@@ -38,7 +38,7 @@ jobs:
         run: gitleaks detect source . -r gitleaks-report.json -f json
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: security-check
     steps:
       - uses: actions/checkout@v4
