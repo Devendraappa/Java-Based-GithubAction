@@ -1,0 +1,51 @@
+name: Environment Variables - 3 Scopes Demo
+
+on:
+  workflow_dispatch:
+
+# Workflow scope (available to all jobs)
+env:
+  GLOBAL_VAR: "Hello from Workflow"
+  WORKFLOW_NAME: "EnvScopesDemo"
+  ENVIRONMENT: "production"
+
+jobs:
+  demo-job:
+    runs-on: ubuntu-latest
+
+    # Job scope (available to all steps in this job)
+    env:
+      JOB_VAR: "Hello from Job"
+      JOB_SECRET: "job-level-value"
+      ENVIRONMENT: "staging"  # overrides workflow level
+
+    steps:
+      - name: Step 1 - Show all variables
+        env:
+          STEP_VAR: "Hello from Step"
+          TEMP_VALUE: "temporary-data"
+        run: |
+          echo "=== All Variables ==="
+          echo "GLOBAL_VAR     = $GLOBAL_VAR"
+          echo "JOB_VAR        = $JOB_VAR"
+          echo "STEP_VAR       = $STEP_VAR"
+          echo "WORKFLOW_NAME  = $WORKFLOW_NAME"
+          echo "ENVIRONMENT    = $ENVIRONMENT"
+          echo "TEMP_VALUE     = $TEMP_VALUE"
+
+      - name: Step 2 - Job scope still available, step scope not
+        run: |
+          echo "=== Step 2 ==="
+          echo "GLOBAL_VAR  = $GLOBAL_VAR"
+          echo "JOB_VAR     = $JOB_VAR"
+          echo "STEP_VAR    = $STEP_VAR"  # This will be empty
+          echo "ENVIRONMENT = $ENVIRONMENT"
+
+      - name: Step 3 - Using GitHub Context + env
+        env:
+          STEP_SPECIFIC: "Only for this step"
+        run: |
+          echo "Runner OS      = ${{ runner.os }}"
+          echo "GitHub Actor   = ${{ github.actor }}"
+          echo "Global Var     = ${{ env.GLOBAL_VAR }}"
+          echo "Step Specific  = $STEP_SPECIFIC"
