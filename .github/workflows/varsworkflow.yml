@@ -1,0 +1,108 @@
+name: All Variables Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select environment"
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+      dry_run:
+        description: "Run in dry mode"
+        type: boolean
+        default: false
+      version:
+        description: "App version"
+        type: string
+        default: "1.0.0"
+
+# 🌍 Workflow-level env
+env:
+  GLOBAL_VAR: "hello-from-workflow"
+
+jobs:
+  producer:
+    name: Producer Job (generate output)
+    runs-on: ubuntu-latest
+
+    # 🧱 Job-level env
+    env:
+      JOB_VAR: "hello-from-job"
+
+    outputs:
+      short_sha: ${{ steps.get_sha.outputs.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Step-level env demo
+        env:
+          STEP_VAR: "hello-from-step"
+        run: |
+          echo "GLOBAL_VAR = $GLOBAL_VAR"
+          echo "JOB_VAR    = $JOB_VAR"
+          echo "STEP_VAR   = $STEP_VAR"
+
+      - name: Use GitHub context
+        run: |
+          echo "Actor      = ${{ github.actor }}"
+          echo "Repo       = ${{ github.repository }}"
+          echo "Branch     = ${{ github.ref_name }}"
+          echo "Event      = ${{ github.event_name }}"
+
+      - name: Use workflow_dispatch inputs
+        run: |
+          echo "Environment = ${{ inputs.environment }}"
+          echo "Dry Run     = ${{ inputs.dry_run }}"
+          echo "Version     = ${{ inputs.version }}"
+
+      - name: Use repo/org variables (vars)
+        run: |
+          echo "Deploy region = ${{ vars.DEPLOY_REGION }}"
+
+      - name: Use secrets (masked in logs)
+        env:
+          USER: ${{ secrets.DOCKER_USER }}
+          PASS: ${{ secrets.DOCKER_PASS }}
+        run: |
+          echo "Logging into Docker (username masked)"
+          echo "$USER"
+          # Never echo passwords in real workflows
+
+      - name: Generate output (short SHA)
+        id: get_sha
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+  consumer:
+    name: Consumer Job (uses output + matrix)
+    needs: producer
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [18, 20]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Show matrix values
+        run: |
+          echo "OS   = ${{ matrix.os }}"
+          echo "Node = ${{ matrix.node }}"
+
+      - name: Use output from previous job
+        run: |
+          echo "Short SHA from producer = ${{ needs.producer.outputs.short_sha }}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Final summary
+        run: |
+          echo "Environment = ${{ inputs.environment }}"
+          echo "Run complete on ${{ matrix.os }} with Node ${{ matrix.node }}"
