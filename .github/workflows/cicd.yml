@@ -16,7 +16,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
   security-check:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: compile
 
     steps:
@@ -38,7 +38,7 @@ jobs:
         run: gitleaks detect source . -r gitleaks-report.json -f json
 
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: security-check
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
           cache: maven
 
   build_project_and_sonar_scan:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: test
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +88,7 @@ jobs:
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
 
   build_docker_image_and_push:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build_project_and_sonar_scan
     steps:
       - uses: actions/checkout@v4
@@ -116,7 +116,7 @@ jobs:
           file: ./Dockerfile
 
   deploy_to_kubernetes:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build_docker_image_and_push
     steps:
       - name: Checkout Code
