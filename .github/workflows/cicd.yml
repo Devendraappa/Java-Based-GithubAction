@@ -1,8 +1,8 @@
 name: CICD Pipeline
 
-on:
-  push:
-    branches: [ "master" ]
+#on:
+  #push:
+    #branches: [ "master" ]
 jobs:
   compile:
     runs-on: ubuntu-latest
