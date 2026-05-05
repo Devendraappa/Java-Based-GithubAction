@@ -4,15 +4,61 @@ on:
   push:
     branches: ["master"]
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'Rollback image tag (optional)'
-        required: false
 
 jobs:
 
-  build:
+# ==============================
+# 1. COMPILE STAGE
+# ==============================
+  compile:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup Java
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+# ==============================
+# 2. SECURITY CHECK (TRIVY + GITLEAKS)
+# ==============================
+  security-check:
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Trivy
+      - name: Trivy Installation
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
+
+      # Run Trivy scan
+      - name: Trivy FS Scan
+        run: trivy fs .
+
+      # Install Gitleaks
+      - name: Gitleaks Installation
+        run: sudo apt install gitleaks -y
+
+      # Run Gitleaks scan
+      - name: Gitleaks Code Scan
+        run: gitleaks detect --source . --report-format json --report-path gitleaks-report.json
+
+# ==============================
+# 3. TEST STAGE
+# ==============================
+  test:
+    runs-on: ubuntu-latest
+    needs: security-check
     steps:
       - uses: actions/checkout@v4
 
@@ -23,34 +69,81 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Build Project
-        run: mvn clean package -DskipTests
+# ==============================
+# 4. BUILD + SONAR SCAN
+# ==============================
+  build_project_and_sonar_scan:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required for Sonar
 
-      - name: Upload JAR
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # Build project
+      - name: Build Project
+        run: mvn package --batch-mode -DskipTests
+
+      # Upload JAR for next stage
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
           path: target/*.jar
 
-  docker:
+      # SonarQube scan
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=Devendraappa_Java-Based-GithubAction
+            -Dsonar.organization=devendraappa
+            -Dsonar.sources=src/main/java
+            -Dsonar.tests=src/test/java
+
+      # Quality gate check
+      - name: SonarQube Quality Gate check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+# ==============================
+# 5. DOCKER BUILD & PUSH
+# ==============================
+  build_docker_image_and_push:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build_project_and_sonar_scan
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download JAR
+      # Download built JAR
+      - name: Download JAR artifact
         uses: actions/download-artifact@v4
         with:
           name: app-jar
           path: app
 
-      - name: Login DockerHub
+      # Login DockerHub
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & Push
+      # Build & push image
+      - name: Build and Push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -60,9 +153,12 @@ jobs:
             deva9017/bankapp:${{ github.run_number }}
             deva9017/bankapp:${{ github.sha }}
 
-  deploy:
+# ==============================
+# 6. DEPLOY TO K8S
+# ==============================
+  deploy_to_kubernetes:
     runs-on: ubuntu-latest
-    needs: docker
+    needs: build_docker_image_and_push
     steps:
       - uses: actions/checkout@v4
 
@@ -79,25 +175,31 @@ jobs:
       - name: Connect to EKS
         run: aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
 
-      - name: Apply manifests
+      # Apply YAML
+      - name: Apply Kubernetes manifests
         run: kubectl apply -f ds.yml
 
-      - name: Deploy new version
+      # Update image
+      - name: Update bankapp image
         run: |
           kubectl set image deployment/bankapp \
           bankapp=deva9017/bankapp:${{ github.run_number }}
 
-      - name: Verify rollout
+      # Wait rollout
+      - name: Verify Rollout
         run: kubectl rollout status deployment/bankapp --timeout=300s
 
-      - name: Auto rollback on failure
+      # Auto rollback
+      - name: Rollback if failed
         if: failure()
-        run: |
-          kubectl rollout undo deployment/bankapp
+        run: kubectl rollout undo deployment/bankapp
 
+# ==============================
+# 7. MANUAL ROLLBACK
+# ==============================
   rollback:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != ''
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -112,10 +214,9 @@ jobs:
       - name: Connect to EKS
         run: aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
 
-      - name: Rollback to specific version
-        run: |
-          kubectl set image deployment/bankapp \
-          bankapp=deva9017/bankapp:${{ github.event.inputs.image_tag }}
+      # Rollback previous version
+      - name: Rollback
+        run: kubectl rollout undo deployment/bankapp
 
-      - name: Verify rollout
+      - name: Verify rollback
         run: kubectl rollout status deployment/bankapp
