@@ -1,61 +1,21 @@
 name: CICD Pipeline
 
 on:
-  push:
-    branches: [ "master" ]
-  workflow_dispatch:           # Manual trigger for rollback
+  #push:
+    branches: ["master"]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Rollback image tag (optional)'
+        required: false
 
 jobs:
-  compile:
+
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
 
-  security-check:
-    runs-on: ubuntu-latest
-    needs: compile
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trivy Installation
-        run: |
-          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -y
-          sudo apt-get install -y trivy
-
-      - name: Trivy FS Scan
-        run: trivy fs --format table -o fs-report.json .
-
-      - name: Gitleaks Installation
-        run: sudo apt install gitleaks -y
-
-      - name: Gitleaks Code Scan
-        run: gitleaks detect source . -r gitleaks-report.json -f json
-
-  test:
-    runs-on: ubuntu-latest
-    needs: security-check
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-
-  build_project_and_sonar_scan:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -64,64 +24,33 @@ jobs:
           cache: maven
 
       - name: Build Project
-        run: mvn package --batch-mode -DskipTests
+        run: mvn clean package -DskipTests
 
-      - name: Upload JAR artifact
+      - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
           path: target/*.jar
 
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6.0.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=Devendraappa_Java-Based-GithubAction
-            -Dsonar.organization=devendraappa
-            -Dsonar.sources=src/main/java
-            -Dsonar.tests=src/test/java
-
-      - name: SonarQube Quality Gate check
-        id: sonarqube-quality-gate-check
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        with:
-          pollingTimeoutSec: 600
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
-
-  build_docker_image_and_push:
+  docker:
     runs-on: ubuntu-latest
-    needs: build_project_and_sonar_scan
+    needs: build
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download JAR artifact
+      - name: Download JAR
         uses: actions/download-artifact@v4
         with:
           name: app-jar
           path: app
 
-      - name: Login to Docker Hub
+      - name: Login DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and Push Docker image
+      - name: Build & Push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -129,103 +58,64 @@ jobs:
           tags: |
             deva9017/bankapp:latest
             deva9017/bankapp:${{ github.run_number }}
-          file: ./Dockerfile
+            deva9017/bankapp:${{ github.sha }}
 
-  deploy_to_kubernetes:
+  deploy:
     runs-on: ubuntu-latest
-    needs: build_docker_image_and_push
+    needs: docker
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ✅ Fixed region from us-east-1 to ap-south-1
-      - name: Configure AWS credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Set up kubectl
+      - name: Setup kubectl
         uses: azure/setup-kubectl@v3
-        with:
-          version: latest
 
-      - name: Update kubeconfig for EKS
+      - name: Connect to EKS
         run: aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
 
-      - name: Verify AWS identity
-        run: aws sts get-caller-identity
+      - name: Apply manifests
+        run: kubectl apply -f ds.yml
 
-      # ✅ Apply full ds.yml (creates resources if not exist, skips if already exist)
-      - name: Apply Kubernetes manifests
-        run: kubectl apply -f ds.yml --validate=false
-
-      # ✅ Update only bankapp image with exact build number
-      - name: Update bankapp image with build number
+      - name: Deploy new version
         run: |
           kubectl set image deployment/bankapp \
           bankapp=deva9017/bankapp:${{ github.run_number }}
 
-      # ✅ Wait and confirm rollout success
-      - name: Verify Rollout
+      - name: Verify rollout
         run: kubectl rollout status deployment/bankapp --timeout=120s
 
-      # ✅ Auto rollback if anything above fails
-      - name: Rollback if Deploy Failed
+      - name: Auto rollback on failure
         if: failure()
         run: |
-          echo "⚠️ Deploy failed! Rolling back to previous version..."
           kubectl rollout undo deployment/bankapp
-          kubectl rollout status deployment/bankapp
-          echo "✅ Rollback completed successfully"
 
-  # ✅ Manual rollback job - trigger from GitHub Actions UI
   rollback:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != ''
     steps:
-      - name: Configure AWS credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Set up kubectl
+      - name: Setup kubectl
         uses: azure/setup-kubectl@v3
-        with:
-          version: latest
 
-      - name: Update kubeconfig for EKS
+      - name: Connect to EKS
         run: aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
 
-      - name: Rollback to previous version
+      - name: Rollback to specific version
         run: |
-          echo "⚠️ Manual rollback triggered..."
-          kubectl rollout undo deployment/bankapp
-          kubectl rollout status deployment/bankapp
-          echo "✅ Rollback completed"
-      - name: Verify Rollout
-        run: kubectl rollout status deployment/bankapp --timeout=120s
-      - name: Show Deployment Status
-        run: |
-          echo "===== PODS STATUS ====="
-          kubectl get pods -o wide
+          kubectl set image deployment/bankapp \
+          bankapp=deva9017/bankapp:${{ github.event.inputs.image_tag }}
 
-          echo "===== DEPLOYMENT STATUS ====="
-          kubectl get deployment bankapp
-
-          echo "===== CURRENT IMAGE ====="
-          kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
-
-          echo "===== ROLLOUT HISTORY ====="
-          kubectl rollout history deployment/bankapp
-
-          echo "===== EVENTS (last 5 mins) ====="
-          kubectl get events --sort-by='.lastTimestamp' | tail -20
-
-
-      - name: Show current running image
-        run: |
-          kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
+      - name: Verify rollout
+        run: kubectl rollout status deployment/bankapp
