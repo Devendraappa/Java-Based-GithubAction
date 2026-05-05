@@ -72,6 +72,11 @@ spec:
             port: 3306
           initialDelaySeconds: 30
           periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 20
+          periodSeconds: 10
 
       volumes:
       - name: mysql-storage
@@ -129,7 +134,14 @@ spec:
           httpGet:
             path: /login
             port: 8080
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
+          periodSeconds: 10
+
+        startupProbe:
+          httpGet:
+            path: /login
+            port: 8080
+          failureThreshold: 30
           periodSeconds: 10
 
         livenessProbe:
