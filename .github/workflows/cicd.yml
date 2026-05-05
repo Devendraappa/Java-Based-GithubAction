@@ -77,6 +77,13 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=GC-Bank
+            -Dsonar.organization=devendraappa
+            -Dsonar.sources=src/main/java
+            -Dsonar.tests=src/test/java
+            -Dsonar.java.binaries=target/classes
 
       - name: SonarQube Quality Gate check
         id: sonarqube-quality-gate-check
