@@ -79,7 +79,7 @@ jobs:
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=GC-Bank
+            -Dsonar.projectKey=Devendraappa_Java-Based-GithubAction
             -Dsonar.organization=devendraappa
             -Dsonar.sources=src/main/java
             -Dsonar.tests=src/test/java
