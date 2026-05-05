@@ -145,7 +145,7 @@ jobs:
           version: latest
       - name: Update kubeconfig for EKS
         run: |
-          aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
+          aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1 --kubeconfig $HOME/.kube/config
 
       - name: Verify identity (debug)      
         run: aws sts get-caller-identity
