@@ -143,10 +143,13 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: latest
-      - name: Configure kubeconfig
+      - name: Update kubeconfig for EKS
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.EKS_KUBECONFIG }}" > $HOME/.kube/config
+          aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
+      #- name: Configure kubeconfig
+        #run: |
+          #mkdir -p $HOME/.kube
+          #echo "${{ secrets.EKS_KUBECONFIG }}" > $HOME/.kube/config
       - name: Deploy to EKS
         run: |
           kubectl apply -f ds.yml
