@@ -206,6 +206,25 @@ jobs:
           kubectl rollout undo deployment/bankapp
           kubectl rollout status deployment/bankapp
           echo "✅ Rollback completed"
+      - name: Verify Rollout
+        run: kubectl rollout status deployment/bankapp --timeout=120s
+      - name: Show Deployment Status
+        run: |
+          echo "===== PODS STATUS ====="
+          kubectl get pods -o wide
+
+          echo "===== DEPLOYMENT STATUS ====="
+          kubectl get deployment bankapp
+
+          echo "===== CURRENT IMAGE ====="
+          kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
+
+          echo "===== ROLLOUT HISTORY ====="
+          kubectl rollout history deployment/bankapp
+
+          echo "===== EVENTS (last 5 mins) ====="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+
 
       - name: Show current running image
         run: |
