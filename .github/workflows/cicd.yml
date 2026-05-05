@@ -1,7 +1,7 @@
 name: CICD Pipeline
 
 on:
-  push:
+  #push:
     branches: [ "master" ]
 jobs:
   compile:
@@ -119,7 +119,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: deva9017/bankapp:latest
+          tags: deva9017/bankapp:${{ github.run_number }}
           file: ./Dockerfile
 
   deploy_to_kubernetes:
