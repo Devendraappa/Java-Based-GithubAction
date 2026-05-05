@@ -82,7 +82,7 @@ jobs:
             -Dsonar.organization=devendraappa
             -Dsonar.sources=src/main/java
             -Dsonar.tests=src/test/java
-            #-Dsonar.java.binaries=target/classes
+
 
       - name: SonarQube Quality Gate check
         id: sonarqube-quality-gate-check
