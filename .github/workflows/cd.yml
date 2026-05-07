@@ -12,9 +12,46 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
+
+      # =========================================
+      # CHECKOUT
+      # =========================================
+
       - uses: actions/checkout@v4
+
+      # =========================================
+      # SETUP JAVA
+      # =========================================
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # =========================================
+      # BUILD APPLICATION
+      # =========================================
+
+      - name: Build JAR
+        run: mvn clean package -DskipTests
+
+      # =========================================
+      # PREPARE DOCKER BUILD CONTEXT
+      # =========================================
+
+      - name: Prepare Docker Build Context
+        run: |
+          mkdir app
+          cp target/*.jar app/app.jar
+
+      # =========================================
+      # LOGIN TO DOCKER HUB
+      # =========================================
 
       - name: Docker Login
         uses: docker/login-action@v3
@@ -22,13 +59,28 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # =========================================
+      # BUILD DOCKER IMAGE
+      # =========================================
+
       - name: Build Docker Image
         run: |
-          docker build -t deva9017/bankapp:${{ github.run_number }} .
+          docker build \
+          -t deva9017/bankapp:${{ github.run_number }} \
+          -t deva9017/bankapp:latest .
 
-      - name: Push Docker Image
+      # =========================================
+      # PUSH DOCKER IMAGE
+      # =========================================
+
+      - name: Push Docker Images
         run: |
           docker push deva9017/bankapp:${{ github.run_number }}
+          docker push deva9017/bankapp:latest
+
+      # =========================================
+      # CONFIGURE AWS
+      # =========================================
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -37,22 +89,111 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      # =========================================
+      # SETUP KUBECTL
+      # =========================================
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      # =========================================
+      # CONNECT TO EKS
+      # =========================================
+
       - name: Configure kubectl
         run: |
           aws eks update-kubeconfig \
             --name bankapp-cluster \
             --region ap-south-1
 
-      - name: Deploy Kubernetes Resources
+      # =========================================
+      # CREATE KUBERNETES SECRET
+      # =========================================
+
+      - name: Create Kubernetes Secret
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USERNAME: ${{ secrets.MYSQL_USERNAME }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+
+        run: |
+          kubectl delete secret mysql-secret --ignore-not-found
+
+          kubectl create secret generic mysql-secret \
+          --from-literal=mysql-root-password="$MYSQL_ROOT_PASSWORD" \
+          --from-literal=mysql-database="$MYSQL_DATABASE" \
+          --from-literal=mysql-username="$MYSQL_USERNAME" \
+          --from-literal=spring-datasource-url="$SPRING_DATASOURCE_URL"
+
+      # =========================================
+      # DEPLOY MYSQL
+      # =========================================
+
+      - name: Deploy MySQL Resources
         run: |
           kubectl apply -f k8s/mysql/
+
+      # =========================================
+      # WAIT FOR MYSQL
+      # =========================================
+
+      - name: Wait for MySQL
+        run: |
+          kubectl rollout status deployment/mysql --timeout=300s
+
+      # =========================================
+      # DEPLOY BANKAPP
+      # =========================================
+
+      - name: Deploy BankApp Resources
+        run: |
           kubectl apply -f k8s/bankapp/
+
+      # =========================================
+      # UPDATE IMAGE
+      # =========================================
 
       - name: Update Image
         run: |
           kubectl set image deployment/bankapp \
           bankapp=deva9017/bankapp:${{ github.run_number }}
 
+      # =========================================
+      # ANNOTATE DEPLOYMENT
+      # =========================================
+
+      - name: Annotate Deployment
+        run: |
+          kubectl annotate deployment/bankapp \
+          kubernetes.io/change-cause="Build:${{ github.run_number }} Commit:${{ github.sha }}" \
+          --overwrite
+
+      # =========================================
+      # VERIFY ROLLOUT
+      # =========================================
+
       - name: Verify Rollout
         run: |
-          kubectl rollout status deployment/bankapp
+          kubectl rollout status deployment/bankapp --timeout=600s
+
+      # =========================================
+      # SHOW STATUS
+      # =========================================
+
+      - name: Deployment Status
+        run: |
+          echo "===== PODS ====="
+          kubectl get pods -o wide
+
+          echo "===== SERVICES ====="
+          kubectl get svc
+
+          echo "===== HPA ====="
+          kubectl get hpa
+
+          echo "===== PVC ====="
+          kubectl get pvc
+
+          echo "===== CURRENT IMAGE ====="
+          kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
