@@ -1,157 +1,108 @@
-name: CICD Pipeline
+name: CD Pipeline
 
-#on:
-  #push:
-    #branches: [ "master" ]
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+
 jobs:
-  compile:
+
+  deploy_to_kubernetes:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-  security-check:
-    runs-on: ubuntu-latest
-    needs: compile
 
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trivy Installation
-        run: |
-          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -y
-          sudo apt-get install -y trivy
-
-      - name: Trivy FS Scan
-        run: trivy fs --format table -o fs-report.json .
-
-      - name: Gitleaks Installation
-        run: sudo apt install gitleaks -y
-      - name: Gitleaks Code Scan
-        run: gitleaks detect source . -r gitleaks-report.json -f json
-
-  test:
-    runs-on: ubuntu-latest
-    needs: security-check
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-
-  build_project_and_sonar_scan:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-      - name: Build Project
-        run: mvn package --batch-mode -DskipTests
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-jar
-          path: target/*.jar
-
-      - uses: actions/checkout@v4
-        with:
-          # Disabling shallow clones is recommended for improving the relevancy of reporting
-          fetch-depth: 0
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6.0.0 # Ex: v4.1.0, See the latest version at https://github.com/marketplace/actions/official-sonarqube-scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=Devendraappa_Java-Based-GithubAction
-            -Dsonar.organization=devendraappa
-            -Dsonar.sources=src/main/java
-            -Dsonar.tests=src/test/java
-
-
-      - name: SonarQube Quality Gate check
-        id: sonarqube-quality-gate-check
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        with:
-          pollingTimeoutSec: 600
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
-
-  build_docker_image_and_push:
-    runs-on: ubuntu-latest
-    needs: build_project_and_sonar_scan
-    steps:
-      - uses: actions/checkout@v4
       - name: Download JAR artifact
         uses: actions/download-artifact@v4
         with:
           name: app-jar
-          path: app  # this will download JAR to ./app folder
+          path: app
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Build and Push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            deva9017/bankapp:latest
-            deva9017/bankapp:${{ github.run_number }}
-          file: ./Dockerfile
 
-  deploy_to_kubernetes:
-    runs-on: ubuntu-latest
-    needs: build_docker_image_and_push
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Install AWS CLI
+      - name: Build Docker image
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install --update
-      - name: Configure AWS credentials
+          docker build \
+          -t deva9017/bankapp:${{ github.run_number }} \
+          -t deva9017/bankapp:latest .
+
+      - name: Push Docker images
+        run: |
+          docker push deva9017/bankapp:${{ github.run_number }}
+          docker push deva9017/bankapp:latest
+
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: latest
-      - name: Update kubeconfig for EKS
-        run: |
-          aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1 --kubeconfig $HOME/.kube/config
+          aws-region: ap-south-1
 
-      - name: Verify identity (debug)      
-        run: aws sts get-caller-identity
-       
-      - name: Deploy to EKS
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Connect to EKS
         run: |
-          kubectl apply -f ds.yml --validate=false
+          aws eks update-kubeconfig \
+          --name bankapp-cluster \
+          --region ap-south-1
+
+      - name: Create Kubernetes Secret
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USERNAME: ${{ secrets.MYSQL_USERNAME }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+        run: |
+          kubectl delete secret mysql-secret --ignore-not-found
+
+          kubectl create secret generic mysql-secret \
+          --from-literal=mysql-root-password="$MYSQL_ROOT_PASSWORD" \
+          --from-literal=mysql-database="$MYSQL_DATABASE" \
+          --from-literal=mysql-username="$MYSQL_USERNAME" \
+          --from-literal=spring-datasource-url="$SPRING_DATASOURCE_URL"
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/mysql/
+          kubectl apply -f k8s/bankapp/
+
+      - name: Wait for MySQL
+        run: |
+          kubectl rollout status deployment/mysql --timeout=300s
+
+      - name: Update bankapp image
+        run: |
+          kubectl set image deployment/bankapp \
+          bankapp=deva9017/bankapp:${{ github.run_number }}
+
+      - name: Annotate deployment
+        run: |
+          kubectl annotate deployment/bankapp \
+          kubernetes.io/change-cause="Build:${{ github.run_number }} Commit:${{ github.sha }}" \
+          --overwrite
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/bankapp --timeout=600s
+
+      - name: Deployment status
+        run: |
+          kubectl get pods -o wide
+          kubectl get svc
+          kubectl get hpa
+          kubectl get pvc
+
+      - name: Rollback if failed
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/bankapp
