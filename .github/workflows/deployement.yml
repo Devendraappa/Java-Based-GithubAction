@@ -176,44 +176,38 @@ jobs:
         uses: azure/setup-kubectl@v3
 
       - name: Connect to EKS
-        run: |
-          aws eks update-kubeconfig \
-          --name bankapp-cluster \
-          --region ap-south-1
+        run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
-      # ← Pipeline creates K8s secret from GitHub Secrets
-      # Passwords NEVER exist in any file
+      # ✅ Delete and recreate - never fails on re-run
       - name: Create Kubernetes Secret
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
           MYSQL_USERNAME: ${{ secrets.MYSQL_USERNAME }}
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
-        run: |
-          kubectl delete secret mysql-secret --ignore-not-found
-          kubectl create secret generic mysql-secret --from-literal=mysql-root-password="$MYSQL_ROOT_PASSWORD" --from-literal=mysql-database="$MYSQL_DATABASE" --from-literal=mysql-username="$MYSQL_USERNAME" --from-literal=spring-datasource-url="$SPRING_DATASOURCE_URL"
-          # ↑ dry-run=client trick:
-          # Creates if not exist
-          # Updates if already exist
-          # Never fails on re-run ✅
+        run: kubectl delete secret mysql-secret --ignore-not-found && kubectl create secret generic mysql-secret --from-literal=mysql-root-password="$MYSQL_ROOT_PASSWORD" --from-literal=mysql-database="$MYSQL_DATABASE" --from-literal=mysql-username="$MYSQL_USERNAME" --from-literal=spring-datasource-url="$SPRING_DATASOURCE_URL"
 
+      # ✅ Creates PVC, HPA, PDB, Deployments, Services
       - name: Apply Kubernetes manifests
         run: kubectl apply -f ds.yml
 
+      # ✅ Wait for MySQL before starting bankapp
+      - name: Wait for MySQL to be ready
+        run: kubectl rollout status deployment/mysql --timeout=300s
+
+      # ✅ Update bankapp with exact build number
       - name: Update bankapp image
-        run: |
-          kubectl set image deployment/bankapp \
-          bankapp=deva9017/bankapp:${{ github.run_number }}
+        run: kubectl set image deployment/bankapp bankapp=deva9017/bankapp:${{ github.run_number }}
 
+      # ✅ Tag deployment with build info
       - name: Annotate deployment
-        run: |
-          kubectl annotate deployment/bankapp \
-          kubernetes.io/change-cause="Build:${{ github.run_number }} Commit:${{ github.sha }}" \
-          --overwrite
+        run: kubectl annotate deployment/bankapp kubernetes.io/change-cause="Build:${{ github.run_number }} Commit:${{ github.sha }}" --overwrite
 
+      # ✅ Wait for bankapp rollout
       - name: Verify Rollout
-        run: kubectl rollout status deployment/bankapp --timeout=300s
+        run: kubectl rollout status deployment/bankapp --timeout=600s
 
+      # ✅ Full status after deploy
       - name: Show Deployment Status
         run: |
           echo "===== PODS ====="
@@ -223,11 +217,11 @@ jobs:
           echo "===== PVC STATUS ====="
           kubectl get pvc mysql-pvc
           echo "===== CURRENT IMAGE ====="
-          kubectl get deployment bankapp \
-          -o=jsonpath='{.spec.template.spec.containers[0].image}'
+          kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
           echo "===== ROLLOUT HISTORY ====="
           kubectl rollout history deployment/bankapp
 
+      # ✅ Auto rollback if anything fails
       - name: Rollback if failed
         if: failure()
         run: |
@@ -236,10 +230,12 @@ jobs:
 
 # =========================================
 # 7. MANUAL ROLLBACK
+# Triggered manually from GitHub Actions UI
 # =========================================
   rollback:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+
     steps:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -252,21 +248,15 @@ jobs:
         uses: azure/setup-kubectl@v3
 
       - name: Connect to EKS
-        run: |
-          aws eks update-kubeconfig \
-          --name bankapp-cluster \
-          --region ap-south-1
+        run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
       - name: Rollback to selected build
         run: |
           echo "Rolling back to build: ${{ github.event.inputs.image_tag }}"
-          kubectl set image deployment/bankapp \
-          bankapp=deva9017/bankapp:${{ github.event.inputs.image_tag }}
+          kubectl set image deployment/bankapp bankapp=deva9017/bankapp:${{ github.event.inputs.image_tag }}
 
       - name: Verify rollback
         run: kubectl rollout status deployment/bankapp --timeout=300s
 
       - name: Show rolled back image
-        run: |
-          kubectl get deployment bankapp \
-          -o=jsonpath='{.spec.template.spec.containers[0].image}'
+        run: kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
