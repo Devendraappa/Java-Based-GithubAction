@@ -184,6 +184,12 @@ jobs:
         run: |
           kubectl set image deployment/bankapp \
           bankapp=deva9017/bankapp:${{ github.run_number }}
+          
+      - name: Annotate deployment revision
+        run: |
+          kubectl annotate deployment/bankapp \
+          kubernetes.io/change-cause="Deploy build ${{ github.run_number }}" \
+          --overwrite
 
       # Wait rollout
       - name: Verify Rollout
