@@ -1,0 +1,12 @@
+# =========================================
+# 7. POD DISRUPTION BUDGET
+# =========================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bankapp-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bankapp
