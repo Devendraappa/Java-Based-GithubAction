@@ -4,6 +4,11 @@ on:
   push:
     branches: ["master"]
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Enter build number to rollback'
+        required: false
+        default: ''
 
 jobs:
 
@@ -188,7 +193,7 @@ jobs:
       - name: Annotate deployment revision
         run: |
           kubectl annotate deployment/bankapp \
-          kubernetes.io/change-cause="Deploy build ${{ github.run_number }}" | Commit ${{ github.sha }}" \
+          kubernetes.io/change-cause="Deploy build ${{ github.run_number }} | Commit ${{ github.sha }}" \
           --overwrite
 
       # Wait rollout
@@ -206,6 +211,7 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+
     steps:
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -220,9 +226,14 @@ jobs:
       - name: Connect to EKS
         run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
-      # Rollback previous version
-      - name: Rollback
-        run: kubectl rollout undo deployment/bankapp
+      # Rollback to specific build
+      - name: Rollback to selected version
+        run: |
+          echo "Rolling back to build: ${{ github.event.inputs.image_tag }}"
 
+          kubectl set image deployment/bankapp \
+          bankapp=deva9017/bankapp:${{ github.event.inputs.image_tag }}
+
+      # Verify rollout
       - name: Verify rollback
-        run: kubectl rollout status deployment/bankapp
+        run: kubectl rollout status deployment/bankapp --timeout=300s
