@@ -1,0 +1,62 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+
+  compile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+  security-check:
+    needs: compile
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+
+      - name: Trivy Scan
+        run: |
+          echo "Run Trivy here"
+
+      - name: Gitleaks Scan
+        run: |
+          echo "Run Gitleaks here"
+
+  test:
+    needs: security-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: |
+          mvn test
+
+  sonar:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SonarQube Scan
+        run: |
+          echo "Run SonarQube scan"
