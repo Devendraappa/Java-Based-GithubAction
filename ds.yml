@@ -1,5 +1,8 @@
 ---
-# MySQL Deployment
+# =========================================
+# 1. MYSQL DEPLOYMENT
+# Secret created by pipeline - not here
+# =========================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,16 +21,82 @@ spec:
       containers:
       - image: mysql:8
         name: mysql
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         env:
+        # ← Just references secret name - no actual password
         - name: MYSQL_ROOT_PASSWORD
-          value: "Test@123"
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret      # created by pipeline
+              key: mysql-root-password
+
         - name: MYSQL_DATABASE
-          value: "bankappdb"
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+
         ports:
         - containerPort: 3306
           name: mysql
+
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          failureThreshold: 3
+
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
 ---
-# MySQL Service
+# =========================================
+# 2. MYSQL PVC
+# =========================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# =========================================
+# 3. MYSQL SERVICE
+# =========================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -37,19 +106,23 @@ spec:
   - port: 3306
   selector:
     app: mysql
+
 ---
-# Java Application Deployment
+# =========================================
+# 4. BANKAPP DEPLOYMENT
+# No passwords here either
+# =========================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bankapp
 spec:
-  replicas: 2                        # 2 pods - zero downtime during update
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1                    # 1 extra pod created during update
-      maxUnavailable: 0              # no pod killed before new one is ready
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: bankapp
@@ -60,9 +133,17 @@ spec:
     spec:
       containers:
       - name: bankapp
-        image: deva9017/bankapp:latest    # pipeline will override this tag
+        image: deva9017/bankapp:latest
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         ports:
         - containerPort: 8080
+
         readinessProbe:
           httpGet:
             path: /login
@@ -70,6 +151,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
           failureThreshold: 3
+
         livenessProbe:
           httpGet:
             path: /login
@@ -77,15 +159,31 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 15
           failureThreshold: 3
+
         env:
+        # ← Just references secret name - no actual password
         - name: SPRING_DATASOURCE_URL
-          value: jdbc:mysql://mysql-service:3306/bankappdb?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: spring-datasource-url
+
         - name: SPRING_DATASOURCE_USERNAME
-          value: root
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-username
+
         - name: SPRING_DATASOURCE_PASSWORD
-          value: Test@123
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+
 ---
-# Bank Application Service
+# =========================================
+# 5. BANKAPP SERVICE
+# =========================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -97,3 +195,46 @@ spec:
     targetPort: 8080
   selector:
     app: bankapp
+
+---
+# =========================================
+# 6. HPA
+# =========================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: bankapp-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: bankapp
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# =========================================
+# 7. POD DISRUPTION BUDGET
+# =========================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bankapp-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bankapp
