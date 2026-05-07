@@ -188,7 +188,7 @@ jobs:
       - name: Annotate deployment revision
         run: |
           kubectl annotate deployment/bankapp \
-          kubernetes.io/change-cause="Deploy build ${{ github.run_number }}" \
+          kubernetes.io/change-cause="Deploy build ${{ github.run_number }}" | Commit ${{ github.sha }}" \
           --overwrite
 
       # Wait rollout
