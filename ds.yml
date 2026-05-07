@@ -136,10 +136,10 @@ spec:
         image: deva9017/bankapp:latest
         resources:
           requests:
-            memory: "256Mi"
+            memory: "512Mi"
             cpu: "250m"
           limits:
-            memory: "756Mi"
+            memory: "1Gi"
             cpu: "500m"
         ports:
         - containerPort: 8080
