@@ -24,7 +24,7 @@ jobs:
         with:
           name: app-jar
           path: app
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GIT_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
 
       # =========================================
