@@ -1,7 +1,7 @@
 name: CICD Pipeline 
 
 on:
-  #push:
+  push:
     branches: ["master"]
   workflow_dispatch:
     inputs:
@@ -189,7 +189,9 @@ jobs:
 
       # ✅ Creates PVC, HPA, PDB, Deployments, Services
       - name: Apply Kubernetes manifests
-        run: kubectl apply -f ds.yml
+        run: |
+          kubectl apply -f k8s/mysql/
+          kubectl apply -f k8s/bankapp/
 
       # ✅ Wait for MySQL before starting bankapp
       - name: Wait for MySQL to be ready
