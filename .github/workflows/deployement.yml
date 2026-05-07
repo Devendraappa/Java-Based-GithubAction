@@ -173,7 +173,7 @@ jobs:
         uses: azure/setup-kubectl@v3
 
       - name: Connect to EKS
-        run: aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
+        run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
       # Apply YAML
       - name: Apply Kubernetes manifests
@@ -212,7 +212,7 @@ jobs:
         uses: azure/setup-kubectl@v3
 
       - name: Connect to EKS
-        run: aws eks update-kubeconfig --name my-bankapp-cluster --region ap-south-1
+        run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
       # Rollback previous version
       - name: Rollback
