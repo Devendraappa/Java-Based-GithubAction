@@ -3,15 +3,21 @@ name: Manual Rollback
 on:
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: 'Enter build number to rollback (example: 10)'
+      environment:
+        description: 'Environment (prod/dev)'
         required: true
-        default: ''
+        type: choice
+        options:
+          - prod
+          - dev
+      image_tag:
+        description: 'Build number (prod: 42, dev: dev-42)'
+        required: true
 
 jobs:
   rollback:
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.event.inputs.environment == 'prod' && 'production' || 'development' }}
 
     steps:
       - name: Configure AWS
@@ -24,19 +30,25 @@ jobs:
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
 
-      - name: Connect to EKS
-        run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
-
-      # ✅ Account ID from secret
-      - name: Rollback to selected build
-        env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+      - name: Connect to correct cluster
         run: |
-          echo "Rolling back to build: ${{ github.event.inputs.image_tag }}"
-          kubectl set image deployment/bankapp bankapp=${{ env.ECR_REGISTRY }}/bankapp:${{ github.event.inputs.image_tag }}
+          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            aws eks update-kubeconfig --name ${{ secrets.PROD_CLUSTER_NAME }} --region ap-south-1
+          else
+            aws eks update-kubeconfig --name ${{ secrets.DEV_CLUSTER_NAME }} --region ap-south-1
+          fi
+
+      - name: Rollback
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            ECR_REPO=bankapp-prod
+          else
+            ECR_REPO=bankapp-dev
+          fi
+          kubectl set image deployment/bankapp bankapp=${{ secrets.ECR_REGISTRY }}/$ECR_REPO:${{ github.event.inputs.image_tag }}
 
       - name: Verify rollback
         run: kubectl rollout status deployment/bankapp --timeout=300s
 
-      - name: Show rolled back image
+      - name: Show image
         run: kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
