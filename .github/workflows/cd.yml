@@ -5,10 +5,19 @@ on:
     workflows: ["CI Pipeline"]
     types:
       - completed
+    branches:
+      - master
+      - dev
 
 jobs:
-  deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+# =========================================
+# DEPLOY TO PROD
+# =========================================
+  deploy-prod:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master'
     runs-on: ubuntu-latest
     environment: production
 
@@ -16,9 +25,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # =========================================
-      # DOWNLOAD ARTIFACT FROM CI PIPELINE
-      # =========================================
       - name: Download Artifact from CI
         uses: actions/download-artifact@v4
         with:
@@ -27,9 +33,6 @@ jobs:
           github-token: ${{ secrets.GIT_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      # =========================================
-      # AWS CREDENTIALS
-      # =========================================
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -37,38 +40,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      # =========================================
-      # LOGIN TO ECR
-      # =========================================
       - name: Login to ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # =========================================
-      # BUILD & PUSH TO ECR
-      # ✅ Account ID from secret
-      # =========================================
+      # ✅ ECR repo = bankapp-prod (from project name + env)
       - name: Build and Push to ECR
         env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/bankapp:latest
-            ${{ env.ECR_REGISTRY }}/bankapp:${{ github.event.workflow_run.run_number }}
+          IMAGE: ${{ secrets.ECR_REGISTRY }}/bankapp-prod:${{ github.event.workflow_run.run_number }}
+        run: |
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          docker tag $IMAGE ${{ secrets.ECR_REGISTRY }}/bankapp-prod:latest
+          docker push ${{ secrets.ECR_REGISTRY }}/bankapp-prod:latest
 
-      # =========================================
-      # DEPLOY TO EKS
-      # =========================================
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
 
-      - name: Connect to EKS
-        run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
+      - name: Connect to PROD EKS
+        run: aws eks update-kubeconfig --name ${{ secrets.PROD_CLUSTER_NAME }} --region ap-south-1
 
-      # ✅ Fixed secret creation
       - name: Create Kubernetes Secret
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
@@ -86,36 +76,117 @@ jobs:
       - name: Wait for MySQL
         run: kubectl rollout status deployment/mysql --timeout=300s
 
-      # ✅ Account ID from secret
       - name: Update BankApp Image
-        env:
-          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
-        run: kubectl set image deployment/bankapp bankapp=${{ env.ECR_REGISTRY }}/bankapp:${{ github.event.workflow_run.run_number }}
+        run: kubectl set image deployment/bankapp bankapp=${{ secrets.ECR_REGISTRY }}/bankapp-prod:${{ github.event.workflow_run.run_number }}
 
       - name: Annotate Deployment
-        run: kubectl annotate deployment/bankapp kubernetes.io/change-cause="Build:${{ github.event.workflow_run.run_number }} Commit:${{ github.event.workflow_run.head_sha }}" --overwrite
+        run: kubectl annotate deployment/bankapp kubernetes.io/change-cause="PROD Build:${{ github.event.workflow_run.run_number }} Commit:${{ github.event.workflow_run.head_sha }}" --overwrite
 
       - name: Verify Rollout
         run: kubectl rollout status deployment/bankapp --timeout=600s
 
-      - name: Show Deployment Status
+      - name: Show Prod Status
         run: |
-          echo "===== PODS ====="
+          echo "===== PROD PODS ====="
           kubectl get pods -o wide
           echo "===== SERVICES ====="
           kubectl get svc
           echo "===== HPA ====="
           kubectl get hpa
-          echo "===== PVC ====="
-          kubectl get pvc
           echo "===== CURRENT IMAGE ====="
           kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
-          echo "===== ROLLOUT HISTORY ====="
-          kubectl rollout history deployment/bankapp
 
       - name: Rollback if failed
         if: failure()
         run: |
-          echo "Deploy failed! Rolling back..."
+          echo "PROD Deploy failed! Rolling back..."
           kubectl rollout undo deployment/bankapp
-          kubectl rollout status deployment/bankapp
+
+# =========================================
+# DEPLOY TO DEV
+# =========================================
+  deploy-dev:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'dev'
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Artifact from CI
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: app
+          github-token: ${{ secrets.GIT_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ✅ ECR repo = bankapp-dev (from project name + env)
+      - name: Build and Push to ECR
+        env:
+          IMAGE: ${{ secrets.ECR_REGISTRY }}/bankapp-dev:dev-${{ github.event.workflow_run.run_number }}
+        run: |
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          docker tag $IMAGE ${{ secrets.ECR_REGISTRY }}/bankapp-dev:dev-latest
+          docker push ${{ secrets.ECR_REGISTRY }}/bankapp-dev:dev-latest
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Connect to DEV EKS
+        run: aws eks update-kubeconfig --name ${{ secrets.DEV_CLUSTER_NAME }} --region ap-south-1
+
+      - name: Create Kubernetes Secret
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USERNAME: ${{ secrets.MYSQL_USERNAME }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+        run: kubectl delete secret mysql-secret --ignore-not-found && kubectl create secret generic mysql-secret --from-literal=mysql-root-password="$MYSQL_ROOT_PASSWORD" --from-literal=mysql-database="$MYSQL_DATABASE" --from-literal=mysql-username="$MYSQL_USERNAME" --from-literal=spring-datasource-url="$SPRING_DATASOURCE_URL"
+
+      - name: Apply MySQL Manifests
+        run: kubectl apply -f k8s/mysql/
+
+      - name: Apply BankApp Manifests
+        run: kubectl apply -f k8s/bankapp/
+
+      - name: Wait for MySQL
+        run: kubectl rollout status deployment/mysql --timeout=300s
+
+      - name: Update BankApp Image
+        run: kubectl set image deployment/bankapp bankapp=${{ secrets.ECR_REGISTRY }}/bankapp-dev:dev-${{ github.event.workflow_run.run_number }}
+
+      - name: Annotate Deployment
+        run: kubectl annotate deployment/bankapp kubernetes.io/change-cause="DEV Build:${{ github.event.workflow_run.run_number }} Commit:${{ github.event.workflow_run.head_sha }}" --overwrite
+
+      - name: Verify Rollout
+        run: kubectl rollout status deployment/bankapp --timeout=600s
+
+      - name: Show Dev Status
+        run: |
+          echo "===== DEV PODS ====="
+          kubectl get pods -o wide
+          echo "===== SERVICES ====="
+          kubectl get svc
+          echo "===== CURRENT IMAGE ====="
+          kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
+
+      - name: Rollback if failed
+        if: failure()
+        run: |
+          echo "DEV Deploy failed! Rolling back..."
+          kubectl rollout undo deployment/bankapp
