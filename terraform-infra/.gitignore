@@ -1,10 +1,15 @@
+# =========================
+# Java / Maven
+# =========================
 HELP.md
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-### STS ###
+# =========================
+# Spring Tool Suite (STS)
+# =========================
 .apt_generated
 .classpath
 .factorypath
@@ -13,13 +18,17 @@ target/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
+# =========================
+# IntelliJ IDEA
+# =========================
+.idea/
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
+# =========================
+# NetBeans
+# =========================
 /nbproject/private/
 /nbbuild/
 /dist/
@@ -29,28 +38,51 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
+# =========================
+# VS Code
+# =========================
 .vscode/
 
+# =========================
 # Terraform
+# =========================
 .terraform/
 *.tfstate
 *.tfstate.*
 crash.log
+crash.*.log
 *.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Keep example tfvars
 !terraform.tfvars.example
 
-# OS files
+# Optional: Ignore plan files
+*.tfplan
+
+# =========================
+# OS Files
+# =========================
 .DS_Store
 Thumbs.db
 
+# =========================
 # Logs
+# =========================
 *.log
 
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
 
-
-.terraform/
-*.tfstate
-*.tfstate.*
-crash.log
-*.tfvars
+# =========================
+# Terraform Provider Binaries
+# =========================
+terraform-provider-*
