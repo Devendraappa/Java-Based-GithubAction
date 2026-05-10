@@ -1,7 +1,3 @@
-# =========================================
-# 4. BANKAPP DEPLOYMENT
-# No passwords here either
-# =========================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,39 +30,36 @@ spec:
         ports:
         - containerPort: 8080
 
+        # ✅ Fixed delays based on real testing
         readinessProbe:
           httpGet:
             path: /login
             port: 8080
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60    # ← was 30, increased
           periodSeconds: 10
-          failureThreshold: 3
+          failureThreshold: 5        # ← was 3, increased
 
         livenessProbe:
           httpGet:
             path: /login
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 90    # ← was 60, increased
           periodSeconds: 15
           failureThreshold: 3
 
         env:
-        # ← Just references secret name - no actual password
         - name: SPRING_DATASOURCE_URL
           valueFrom:
             secretKeyRef:
               name: mysql-secret
               key: spring-datasource-url
-
         - name: SPRING_DATASOURCE_USERNAME
           valueFrom:
             secretKeyRef:
               name: mysql-secret
               key: mysql-username
-
         - name: SPRING_DATASOURCE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mysql-secret
               key: mysql-root-password
-
