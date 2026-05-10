@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 HELP.md
 target/
 !.mvn/wrapper/maven-wrapper.jar
@@ -31,3 +32,19 @@ build/
 
 ### VS Code ###
 .vscode/
+=======
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!terraform.tfvars.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+>>>>>>> 4363026 (feat: add Terraform infrastructure code for EKS, VPC and IAM)
