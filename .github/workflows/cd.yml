@@ -28,29 +28,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
 
       # =========================================
-      # LOGIN TO DOCKER HUB
-      # =========================================
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # =========================================
-      # BUILD & PUSH DOCKER IMAGE
-      # =========================================
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            deva9017/bankapp:latest
-            deva9017/bankapp:${{ github.event.workflow_run.run_number }}
-            deva9017/bankapp:${{ github.event.workflow_run.head_sha }}
-
-      # =========================================
-      # DEPLOY TO EKS
+      # AWS CREDENTIALS
       # =========================================
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -59,13 +37,38 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      # =========================================
+      # LOGIN TO ECR
+      # =========================================
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # =========================================
+      # BUILD & PUSH TO ECR
+      # ✅ Account ID from secret
+      # =========================================
+      - name: Build and Push to ECR
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/bankapp:latest
+            ${{ env.ECR_REGISTRY }}/bankapp:${{ github.event.workflow_run.run_number }}
+
+      # =========================================
+      # DEPLOY TO EKS
+      # =========================================
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
 
       - name: Connect to EKS
         run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
-      # ✅ Fixed - single line no \ continuation
+      # ✅ Fixed secret creation
       - name: Create Kubernetes Secret
         env:
           MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
@@ -74,7 +77,6 @@ jobs:
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
         run: kubectl delete secret mysql-secret --ignore-not-found && kubectl create secret generic mysql-secret --from-literal=mysql-root-password="$MYSQL_ROOT_PASSWORD" --from-literal=mysql-database="$MYSQL_DATABASE" --from-literal=mysql-username="$MYSQL_USERNAME" --from-literal=spring-datasource-url="$SPRING_DATASOURCE_URL"
 
-      # ✅ Apply separated manifests
       - name: Apply MySQL Manifests
         run: kubectl apply -f k8s/mysql/
 
@@ -84,8 +86,11 @@ jobs:
       - name: Wait for MySQL
         run: kubectl rollout status deployment/mysql --timeout=300s
 
+      # ✅ Account ID from secret
       - name: Update BankApp Image
-        run: kubectl set image deployment/bankapp bankapp=deva9017/bankapp:${{ github.event.workflow_run.run_number }}
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+        run: kubectl set image deployment/bankapp bankapp=${{ env.ECR_REGISTRY }}/bankapp:${{ github.event.workflow_run.run_number }}
 
       - name: Annotate Deployment
         run: kubectl annotate deployment/bankapp kubernetes.io/change-cause="Build:${{ github.event.workflow_run.run_number }} Commit:${{ github.event.workflow_run.head_sha }}" --overwrite
@@ -105,8 +110,9 @@ jobs:
           kubectl get pvc
           echo "===== CURRENT IMAGE ====="
           kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
+          echo "===== ROLLOUT HISTORY ====="
+          kubectl rollout history deployment/bankapp
 
-      # ✅ Added auto rollback
       - name: Rollback if failed
         if: failure()
         run: |
