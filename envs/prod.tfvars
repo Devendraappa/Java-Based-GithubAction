@@ -1,0 +1,11 @@
+region             = "ap-south-1"
+project_name       = "bankapp"
+vpc_cidr           = "192.168.0.0/16"
+availability_zones = ["ap-south-1a", "ap-south-1b"]
+public_subnets     = ["192.168.1.0/24", "192.168.2.0/24"]
+private_subnets    = ["192.168.3.0/24", "192.168.4.0/24"]
+cluster_version    = "1.31"
+node_instance_types = ["t3.medium"]
+node_min_size      = 2
+node_max_size      = 4
+node_desired_size  = 2

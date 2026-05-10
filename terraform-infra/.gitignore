@@ -46,3 +46,11 @@ Thumbs.db
 
 # Logs
 *.log
+
+
+
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
