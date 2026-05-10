@@ -27,10 +27,13 @@ jobs:
       - name: Connect to EKS
         run: aws eks update-kubeconfig --name bankapp-cluster --region ap-south-1
 
+      # ✅ Account ID from secret
       - name: Rollback to selected build
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
         run: |
           echo "Rolling back to build: ${{ github.event.inputs.image_tag }}"
-          kubectl set image deployment/bankapp bankapp=deva9017/bankapp:${{ github.event.inputs.image_tag }}
+          kubectl set image deployment/bankapp bankapp=${{ env.ECR_REGISTRY }}/bankapp:${{ github.event.inputs.image_tag }}
 
       - name: Verify rollback
         run: kubectl rollout status deployment/bankapp --timeout=300s
