@@ -10,6 +10,7 @@ on:
       - 'k8s/**'
       - 'Dockerfile'
       - 'pom.xml'
+      - '.github/workflows/**'
  
 jobs:
 
