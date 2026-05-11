@@ -117,12 +117,17 @@ jobs:
             -Dsonar.branch.name=${{ github.ref_name }}
             -Dsonar.sources=src/main/java
             -Dsonar.tests=src/test/java
+            -Dsonar.java.binaries=target/classes
+            -Dsonar.qualitygate.wait=true
 
+            
       - name: SonarQube Quality Gate check
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 10
-        with:
-          pollingTimeoutSec: 600
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          pollingTimeoutSec: 600
+          # Optional: force branch (helps in some cases)
+          args: -Dsonar.branch.name=${{ github.ref_name }}
