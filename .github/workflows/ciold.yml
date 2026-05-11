@@ -1,7 +1,7 @@
 name: CI Pipeline
 
 on:
-  push:
+  #push:
     branches:
       - master    # ← triggers prod deploy
       - dev       # ← triggers dev deploy
