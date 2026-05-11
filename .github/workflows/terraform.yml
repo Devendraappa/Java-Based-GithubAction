@@ -1,17 +1,17 @@
 name: Terraform Infrastructure
 
 on:
-  #push:
+  push:
     branches:
       - master
       - dev
     paths:
-      - 'terraform-infra/**'    # ← only triggers when terraform files change
+      - 'terraform-infra/**'
 
-  workflow_dispatch:            # ← manual trigger for destroy
+  workflow_dispatch:
     inputs:
       action:
-        description: 'Terraform action to perform'
+        description: 'Terraform action'
         required: true
         type: choice
         options:
@@ -19,7 +19,7 @@ on:
           - apply
           - destroy
       environment:
-        description: 'Environment to target'
+        description: 'Environment'
         required: true
         type: choice
         options:
@@ -30,7 +30,6 @@ jobs:
 
 # =========================================
 # TERRAFORM PROD
-# Triggers when push to master
 # =========================================
   terraform-prod:
     if: >
@@ -39,71 +38,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' &&
       github.event.inputs.environment == 'prod')
     runs-on: ubuntu-latest
-    environment: production        # ← approval gate for prod infra
-    defaults:
-      run:
-        working-directory: terraform-infra   # ← run all commands from here
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.7.0"
-
-      - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
-
-      # ✅ Init with S3 backend
-      - name: Terraform Init
-        run: terraform init -reconfigure
-
-      # ✅ Select or create prod workspace
-      - name: Select Prod Workspace
-        run: |
-          terraform workspace select prod || terraform workspace new prod
-
-      # ✅ Always run plan
-      - name: Terraform Plan
-        run: terraform plan -var-file="envs/prod.tfvars" -out=prod.tfplan
-
-      # ✅ Apply only on push to master or manual apply
-      - name: Terraform Apply
-        if: >
-          github.event_name == 'push' ||
-          github.event.inputs.action == 'apply'
-        run: terraform apply prod.tfplan
-
-      # ✅ Destroy only on manual trigger
-      - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy'
-        run: terraform destroy -var-file="envs/prod.tfvars" -auto-approve
-
-      # ✅ Show outputs after apply
-      - name: Show Outputs
-        if: >
-          github.event_name == 'push' ||
-          github.event.inputs.action == 'apply'
-        run: terraform output
-
-# =========================================
-# TERRAFORM DEV
-# Triggers when push to dev
-# =========================================
-  terraform-dev:
-    if: >
-      (github.event_name == 'push' &&
-      github.ref == 'refs/heads/dev') ||
-      (github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.environment == 'dev')
-    runs-on: ubuntu-latest
-    environment: development       # ← no approval for dev infra
+    environment: production
     defaults:
       run:
         working-directory: terraform-infra
@@ -127,10 +62,64 @@ jobs:
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      # ✅ Select or create dev workspace
+      - name: Select Prod Workspace
+        run: terraform workspace select prod || terraform workspace new prod
+
+      - name: Terraform Plan
+        run: terraform plan -var-file="envs/prod.tfvars" -out=prod.tfplan
+
+      - name: Terraform Apply
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: terraform apply prod.tfplan
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -var-file="envs/prod.tfvars" -auto-approve
+
+      - name: Show Outputs
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: terraform output
+
+# =========================================
+# TERRAFORM DEV
+# =========================================
+  terraform-dev:
+    if: >
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.environment == 'dev')
+    runs-on: ubuntu-latest
+    environment: development
+    defaults:
+      run:
+        working-directory: terraform-infra
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Terraform Init
+        run: terraform init -reconfigure
+
       - name: Select Dev Workspace
-        run: |
-          terraform workspace select dev || terraform workspace new dev
+        run: terraform workspace select dev || terraform workspace new dev
 
       - name: Terraform Plan
         run: terraform plan -var-file="envs/dev.tfvars" -out=dev.tfplan

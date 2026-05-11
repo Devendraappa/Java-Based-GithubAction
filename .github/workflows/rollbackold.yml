@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to rollback'
+        description: 'Environment (prod/dev)'
         required: true
         type: choice
         options:
@@ -13,7 +13,6 @@ on:
       image_tag:
         description: 'Build number (prod: 42, dev: dev-42)'
         required: true
-        default: ''
 
 jobs:
   rollback:
@@ -34,31 +33,22 @@ jobs:
       - name: Connect to correct cluster
         run: |
           if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-            aws eks update-kubeconfig \
-            --name ${{ secrets.PROD_CLUSTER_NAME }} \
-            --region ap-south-1
+            aws eks update-kubeconfig --name ${{ secrets.PROD_CLUSTER_NAME }} --region ap-south-1
           else
-            aws eks update-kubeconfig \
-            --name ${{ secrets.DEV_CLUSTER_NAME }} \
-            --region ap-south-1
+            aws eks update-kubeconfig --name ${{ secrets.DEV_CLUSTER_NAME }} --region ap-south-1
           fi
 
-      - name: Rollback to selected build
+      - name: Rollback
         run: |
           if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
             ECR_REPO=bankapp-prod
           else
             ECR_REPO=bankapp-dev
           fi
-          echo "Rolling back ${{ github.event.inputs.environment }} to: ${{ github.event.inputs.image_tag }}"
-          kubectl set image deployment/bankapp \
-          bankapp=${{ secrets.ECR_REGISTRY }}/$ECR_REPO:${{ github.event.inputs.image_tag }}
+          kubectl set image deployment/bankapp bankapp=${{ secrets.ECR_REGISTRY }}/$ECR_REPO:${{ github.event.inputs.image_tag }}
 
       - name: Verify rollback
         run: kubectl rollout status deployment/bankapp --timeout=300s
 
-      - name: Show rolled back image
-        run: |
-          echo "Currently running:"
-          kubectl get deployment bankapp \
-          -o=jsonpath='{.spec.template.spec.containers[0].image}'
+      - name: Show image
+        run: kubectl get deployment bankapp -o=jsonpath='{.spec.template.spec.containers[0].image}'
