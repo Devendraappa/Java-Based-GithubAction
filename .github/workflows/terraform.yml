@@ -78,11 +78,40 @@ jobs:
         if: github.event.inputs.action == 'destroy'
         run: terraform destroy -var-file="envs/prod.tfvars" -auto-approve
 
-      - name: Show Outputs
+      - name: Show Terraform Outputs
         if: >
           github.event_name == 'push' ||
           github.event.inputs.action == 'apply'
         run: terraform output
+
+      # ✅ Your suggestion - added here!
+      - name: Update kubeconfig PROD
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: |
+          aws eks update-kubeconfig \
+            --region ap-south-1 \
+            --name ${{ secrets.PROD_CLUSTER_NAME }}
+
+      # ✅ Verify nodes are ready
+      - name: Verify PROD Nodes
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: |
+          echo "===== WAITING FOR NODES ====="
+          kubectl wait --for=condition=Ready nodes \
+            --all --timeout=300s
+
+          echo "===== PROD NODES ====="
+          kubectl get nodes -o wide
+
+          echo "===== CLUSTER INFO ====="
+          kubectl cluster-info
+
+          echo "===== SYSTEM PODS ====="
+          kubectl get pods -n kube-system
 
 # =========================================
 # TERRAFORM DEV
@@ -134,8 +163,37 @@ jobs:
         if: github.event.inputs.action == 'destroy'
         run: terraform destroy -var-file="envs/dev.tfvars" -auto-approve
 
-      - name: Show Outputs
+      - name: Show Terraform Outputs
         if: >
           github.event_name == 'push' ||
           github.event.inputs.action == 'apply'
         run: terraform output
+
+      # ✅ Your suggestion - added here!
+      - name: Update kubeconfig DEV
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: |
+          aws eks update-kubeconfig \
+            --region ap-south-1 \
+            --name ${{ secrets.DEV_CLUSTER_NAME }}
+
+      # ✅ Verify nodes are ready
+      - name: Verify DEV Nodes
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: |
+          echo "===== WAITING FOR NODES ====="
+          kubectl wait --for=condition=Ready nodes \
+            --all --timeout=300s
+
+          echo "===== DEV NODES ====="
+          kubectl get nodes -o wide
+
+          echo "===== CLUSTER INFO ====="
+          kubectl cluster-info
+
+          echo "===== SYSTEM PODS ====="
+          kubectl get pods -n kube-system
