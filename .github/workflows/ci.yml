@@ -114,11 +114,12 @@ jobs:
           args: >
             -Dsonar.projectKey=Devendraappa_Java-Based-GithubAction
             -Dsonar.organization=devendraappa
+            -Dsonar.branch.name=${{ github.ref_name }}
             -Dsonar.sources=src/main/java
             -Dsonar.tests=src/test/java
 
       - name: SonarQube Quality Gate check
-        uses: sonarsource/sonarqube-quality-gate-action@master
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
         with:
           pollingTimeoutSec: 600
         env:
