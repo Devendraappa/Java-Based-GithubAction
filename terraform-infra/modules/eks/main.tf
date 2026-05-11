@@ -144,24 +144,24 @@ resource "aws_eks_addon" "kube_proxy" {
 # =========================================
 data "aws_caller_identity" "current" {}
 
-resource "aws_eks_access_entry" "current_user" {
-  cluster_name  = aws_eks_cluster.main.name
-  principal_arn = data.aws_caller_identity.current.arn
-  type          = "STANDARD"
-  depends_on    = [aws_eks_cluster.main]
-}
+# resource "aws_eks_access_entry" "current_user" {
+#   cluster_name  = aws_eks_cluster.main.name
+#   principal_arn = data.aws_caller_identity.current.arn
+#   type          = "STANDARD"
+#   depends_on    = [aws_eks_cluster.main]
+# }
 
-resource "aws_eks_access_policy_association" "current_user_admin" {
-  cluster_name  = aws_eks_cluster.main.name
-  principal_arn = data.aws_caller_identity.current.arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+# resource "aws_eks_access_policy_association" "current_user_admin" {
+#   cluster_name  = aws_eks_cluster.main.name
+#   principal_arn = data.aws_caller_identity.current.arn
+#   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
-  access_scope {
-    type = "cluster"
-  }
+#   access_scope {
+#     type = "cluster"
+#   }
 
-  depends_on = [aws_eks_access_entry.current_user]
-}
+#   depends_on = [aws_eks_access_entry.current_user]
+# }
 
 
 
