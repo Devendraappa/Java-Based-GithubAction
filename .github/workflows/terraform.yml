@@ -18,6 +18,7 @@ on:
           - plan
           - apply
           - destroy
+
       environment:
         description: 'Environment'
         required: true
@@ -37,8 +38,10 @@ jobs:
       github.ref == 'refs/heads/master') ||
       (github.event_name == 'workflow_dispatch' &&
       github.event.inputs.environment == 'prod')
+
     runs-on: ubuntu-latest
     environment: production
+
     defaults:
       run:
         working-directory: terraform-infra
@@ -52,12 +55,17 @@ jobs:
         with:
           terraform_version: "~> 1.11"
 
-      - name: Configure AWS
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
 
       - name: Terraform Init
         run: terraform init -reconfigure
@@ -72,19 +80,8 @@ jobs:
         if: >
           github.event_name == 'push' ||
           github.event.inputs.action == 'apply'
-        run: terraform apply prod.tfplan
+        run: terraform apply -auto-approve prod.tfplan
 
-      - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy'
-        run: terraform destroy -var-file="envs/prod.tfvars" -auto-approve
-
-      - name: Show Terraform Outputs
-        if: >
-          github.event_name == 'push' ||
-          github.event.inputs.action == 'apply'
-        run: terraform output
-
-      # ✅ Your suggestion - added here!
       - name: Update kubeconfig PROD
         if: >
           github.event_name == 'push' ||
@@ -92,17 +89,19 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ap-south-1 \
-            --name ${{ secrets.PROD_CLUSTER_NAME }}
+            --name bankapp-prod-cluster
 
-      # ✅ Verify nodes are ready
       - name: Verify PROD Nodes
         if: >
           github.event_name == 'push' ||
           github.event.inputs.action == 'apply'
         run: |
           echo "===== WAITING FOR NODES ====="
-          kubectl wait --for=condition=Ready nodes \
-            --all --timeout=300s
+
+          kubectl wait \
+            --for=condition=Ready nodes \
+            --all \
+            --timeout=300s
 
           echo "===== PROD NODES ====="
           kubectl get nodes -o wide
@@ -113,6 +112,16 @@ jobs:
           echo "===== SYSTEM PODS ====="
           kubectl get pods -n kube-system
 
+      - name: Show Terraform Outputs
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: terraform output
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -var-file="envs/prod.tfvars" -auto-approve
+
 # =========================================
 # TERRAFORM DEV
 # =========================================
@@ -122,8 +131,10 @@ jobs:
       github.ref == 'refs/heads/dev') ||
       (github.event_name == 'workflow_dispatch' &&
       github.event.inputs.environment == 'dev')
+
     runs-on: ubuntu-latest
     environment: development
+
     defaults:
       run:
         working-directory: terraform-infra
@@ -135,14 +146,19 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.7.0"
+          terraform_version: "~> 1.11"
 
-      - name: Configure AWS
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
 
       - name: Terraform Init
         run: terraform init -reconfigure
@@ -157,19 +173,8 @@ jobs:
         if: >
           github.event_name == 'push' ||
           github.event.inputs.action == 'apply'
-        run: terraform apply dev.tfplan
+        run: terraform apply -auto-approve dev.tfplan
 
-      - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy'
-        run: terraform destroy -var-file="envs/dev.tfvars" -auto-approve
-
-      - name: Show Terraform Outputs
-        if: >
-          github.event_name == 'push' ||
-          github.event.inputs.action == 'apply'
-        run: terraform output
-
-      # ✅ Your suggestion - added here!
       - name: Update kubeconfig DEV
         if: >
           github.event_name == 'push' ||
@@ -177,17 +182,19 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ap-south-1 \
-            --name ${{ secrets.DEV_CLUSTER_NAME }}
+            --name bankapp-dev-cluster
 
-      # ✅ Verify nodes are ready
       - name: Verify DEV Nodes
         if: >
           github.event_name == 'push' ||
           github.event.inputs.action == 'apply'
         run: |
           echo "===== WAITING FOR NODES ====="
-          kubectl wait --for=condition=Ready nodes \
-            --all --timeout=300s
+
+          kubectl wait \
+            --for=condition=Ready nodes \
+            --all \
+            --timeout=300s
 
           echo "===== DEV NODES ====="
           kubectl get nodes -o wide
@@ -197,3 +204,13 @@ jobs:
 
           echo "===== SYSTEM PODS ====="
           kubectl get pods -n kube-system
+
+      - name: Show Terraform Outputs
+        if: >
+          github.event_name == 'push' ||
+          github.event.inputs.action == 'apply'
+        run: terraform output
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -var-file="envs/dev.tfvars" -auto-approve
