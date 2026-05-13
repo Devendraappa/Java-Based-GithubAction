@@ -10,7 +10,8 @@ output "cluster_endpoint" {
 
 output "ecr_repository_url" {
   description = "ECR repository URL"
-  value       = terraform.workspace == "prod" ? module.ecr[0].repository_url : "Dev uses prod ECR repo"
+  value       = module.ecr.repository_url  
+  #value       = terraform.workspace == "prod" ? module.ecr[0].repository_url : "Dev uses prod ECR repo"
 }
 
 output "vpc_id" {

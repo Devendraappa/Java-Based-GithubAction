@@ -82,5 +82,5 @@ module "ecr" {
   project_name = var.project_name
   region       = var.region
   env          = local.env 
-  count        = terraform.workspace == "prod" ? 1 : 0
+  # count        = terraform.workspace == "prod" ? 1 : 0
 }
