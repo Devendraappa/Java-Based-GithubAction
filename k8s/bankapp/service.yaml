@@ -1,10 +1,11 @@
-# ✅ Cleaned up extra --- separators
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql-service
+  name: bankapp-service
 spec:
+  type: LoadBalancer
   ports:
-  - port: 3306
+  - port: 80
+    targetPort: 8080
   selector:
-    app: mysql
+    app: bankapp
