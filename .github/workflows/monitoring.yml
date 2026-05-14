@@ -93,11 +93,28 @@ jobs:
 
       - name: Show Monitoring Status
         run: |
-          echo "===== MONITORING PODS ====="
-          kubectl get pods -n monitoring
-          echo "===== MONITORING SERVICES ====="
-          kubectl get svc -n monitoring
-          echo "===== GRAFANA URL ====="
+         echo "===== POD STATUS ====="
+            kubectl get pods -n monitoring -o wide
+
+         echo "===== SERVICES ====="
+            kubectl get svc -n monitoring
+
+         echo "===== EVENTS ====="
+            kubectl get events -n monitoring \
+             --sort-by=.metadata.creationTimestamp
+
+         echo "===== PROMETHEUS LOGS ====="
+         kubectl logs deployment/prometheus -n monitoring || true
+
+         echo "===== GRAFANA LOGS ====="
+         kubectl logs deployment/grafana -n monitoring || true
+
+         echo "===== ALERTMANAGER LOGS ====="
+         kubectl logs deployment/alertmanager -n monitoring || true
+
+         echo "===== DESCRIBE PODS ====="
+         kubectl describe pods -n monitoring
+         echo "===== GRAFANA URL ====="
           kubectl get svc grafana-service -n monitoring \
           -o=jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 
