@@ -96,7 +96,7 @@ jobs:
           cache: maven
 
       - name: Build Project
-        run: mvn package --batch-mode -DskipTests
+        run: mvn clean package --batch-mode -DskipTests
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
