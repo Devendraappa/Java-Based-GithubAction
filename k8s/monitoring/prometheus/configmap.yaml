@@ -1,0 +1,232 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager-service:9093
+
+    rule_files:
+      - "/etc/prometheus/alert-rules.yml"
+
+    scrape_configs:
+
+      # =========================================
+      # Prometheus itself
+      # =========================================
+      - job_name: 'prometheus'
+        static_configs:
+        - targets: ['localhost:9090']
+
+      # =========================================
+      # Kubernetes nodes
+      # =========================================
+      - job_name: 'kubernetes-nodes'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+        - role: node
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+      # =========================================
+      # Kubernetes pods
+      # =========================================
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
+
+      # =========================================
+      # Kubernetes services
+      # =========================================
+      - job_name: 'kubernetes-services'
+        kubernetes_sd_configs:
+        - role: service
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+
+      # =========================================
+      # BankApp specific
+      # =========================================
+      - job_name: 'bankapp'
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names:
+            - default
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: bankapp
+        - source_labels: [__address__]
+          action: replace
+          regex: ([^:]+)(?::\d+)?
+          replacement: $1:8080
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+
+      # =========================================
+      # MySQL specific
+      # =========================================
+      - job_name: 'mysql'
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names:
+            - default
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: mysql
+
+  alert-rules.yml: |
+    groups:
+    - name: bankapp-alerts
+      rules:
+
+      # =========================================
+      # Pod Alerts
+      # =========================================
+      - alert: PodDown
+        expr: kube_pod_status_ready{namespace="default",condition="true"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} is down"
+          description: "Pod {{ $labels.pod }} has been down for more than 1 minute"
+
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total{namespace="default"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash looping"
+          description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in last 15 minutes"
+
+      - alert: PodHighMemory
+        expr: container_memory_usage_bytes{namespace="default",container="bankapp"} / container_spec_memory_limit_bytes{namespace="default",container="bankapp"} * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BankApp pod high memory"
+          description: "BankApp pod memory usage is {{ $value }}%"
+
+      - alert: PodHighCPU
+        expr: rate(container_cpu_usage_seconds_total{namespace="default",container="bankapp"}[5m]) * 100 > 75
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BankApp pod high CPU"
+          description: "BankApp CPU usage is {{ $value }}%"
+
+      # =========================================
+      # Node Alerts
+      # =========================================
+      - alert: NodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.node }} is not ready"
+          description: "Node {{ $labels.node }} has been not ready for more than 1 minute"
+
+      - alert: NodeHighMemory
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node high memory usage"
+          description: "Node memory usage is {{ $value }}%"
+
+      - alert: NodeHighCPU
+        expr: 100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node high CPU usage"
+          description: "Node CPU usage is {{ $value }}%"
+
+      # =========================================
+      # PVC Alerts
+      # =========================================
+      - alert: PVCAlmostFull
+        expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100 > 70
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} almost full"
+          description: "PVC usage is {{ $value }}%"
+
+      - alert: PVCCriticalFull
+        expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PVC {{ $labels.persistentvolumeclaim }} critically full"
+          description: "PVC usage is {{ $value }}%"
+
+      # =========================================
+      # Deployment Alerts
+      # =========================================
+      - alert: DeploymentReplicasMismatch
+        expr: kube_deployment_spec_replicas{namespace="default"} != kube_deployment_status_available_replicas{namespace="default"}
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Deployment {{ $labels.deployment }} replicas mismatch"
+          description: "Expected {{ $value }} replicas not available"
+
+      - alert: HPAMaxReplicas
+        expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="default"} == kube_horizontalpodautoscaler_spec_max_replicas{namespace="default"}
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} at max replicas"
+          description: "HPA has reached maximum replicas - consider scaling up"
