@@ -7,9 +7,9 @@ data:
   alertmanager.yml: |
     global:
       smtp_smarthost: 'smtp.gmail.com:587'
-      smtp_from: '${GMAIL_ADDRESS}'
-      smtp_auth_username: '${GMAIL_ADDRESS}'
-      smtp_auth_password: '${GMAIL_APP_PASSWORD}'
+      smtp_from: 'kunedevendraappa@gmail.com'
+      smtp_auth_username: 'kunedevendraappa@gmail.com'
+      smtp_auth_password: 'nxszerkayswsuhdz'
       smtp_require_tls: true
 
     route:

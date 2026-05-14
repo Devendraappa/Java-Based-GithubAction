@@ -16,15 +16,10 @@ spec:
       containers:
       - name: alertmanager
         image: prom/alertmanager:v0.26.0
-        # ✅ Use shell to substitute env vars before starting
-        command:
-        - /bin/sh
-        - -c
-        - |
-          envsubst < /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
-          /bin/alertmanager \
-            --config.file=/tmp/alertmanager.yml \
-            --storage.path=/alertmanager
+
+        args:
+        - --config.file=/etc/alertmanager/alertmanager.yml
+        - --storage.path=/alertmanager
         ports:
         - containerPort: 9093
         resources:

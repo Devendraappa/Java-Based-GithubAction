@@ -14,6 +14,8 @@ spec:
         app: prometheus
     spec:
       serviceAccountName: prometheus
+      securityContext:
+        fsGroup: 65534
       containers:
       - name: prometheus
         image: prom/prometheus:v2.45.0
