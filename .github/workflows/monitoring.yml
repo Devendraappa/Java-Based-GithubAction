@@ -74,6 +74,8 @@ jobs:
           kubectl apply -f k8s/monitoring/prometheus/configmap.yaml
           kubectl apply -f k8s/monitoring/prometheus/deployment.yaml
           kubectl apply -f k8s/monitoring/prometheus/service.yaml
+          # kube-state-metrics
+          kubectl apply -f k8s/monitoring/kube-state-metrics.yaml
 
       - name: Deploy AlertManager
         run: |
@@ -171,6 +173,8 @@ jobs:
           kubectl apply -f k8s/monitoring/prometheus/configmap.yaml
           kubectl apply -f k8s/monitoring/prometheus/deployment.yaml
           kubectl apply -f k8s/monitoring/prometheus/service.yaml
+          # kube-state-metrics
+          kubectl apply -f k8s/monitoring/kube-state-metrics.yaml
 
       - name: Deploy AlertManager
         run: |
