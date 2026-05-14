@@ -1,0 +1,182 @@
+name: Deploy Monitoring
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+    paths:
+      - 'k8s/monitoring/**'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
+          - both
+
+jobs:
+
+# =========================================
+# DEPLOY MONITORING TO PROD
+# =========================================
+  monitoring-prod:
+    if: >
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.environment == 'prod' ||
+      github.event.inputs.environment == 'both'))
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Connect to PROD EKS
+        run: aws eks update-kubeconfig --name ${{ secrets.PROD_CLUSTER_NAME }} --region ap-south-1
+
+      - name: Create Monitoring Namespace
+        run: kubectl apply -f k8s/monitoring/namespace.yaml
+
+      # ✅ Create secret from GitHub Secrets
+      - name: Create Monitoring Secret
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          kubectl create secret generic monitoring-secret \
+            --namespace monitoring \
+            --from-literal=gmail-address="$GMAIL_ADDRESS" \
+            --from-literal=gmail-app-password="$GMAIL_APP_PASSWORD" \
+            --from-literal=grafana-admin-password="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Prometheus
+        run: |
+          kubectl apply -f k8s/monitoring/prometheus/clusterrole.yaml
+          kubectl apply -f k8s/monitoring/prometheus/pvc.yaml
+          kubectl apply -f k8s/monitoring/prometheus/configmap.yaml
+          kubectl apply -f k8s/monitoring/prometheus/deployment.yaml
+          kubectl apply -f k8s/monitoring/prometheus/service.yaml
+
+      - name: Deploy AlertManager
+        run: |
+          kubectl apply -f k8s/monitoring/alertmanager/configmap.yaml
+          kubectl apply -f k8s/monitoring/alertmanager/deployment.yaml
+          kubectl apply -f k8s/monitoring/alertmanager/service.yaml
+
+      - name: Deploy Grafana
+        run: |
+          kubectl apply -f k8s/monitoring/grafana/pvc.yaml
+          kubectl apply -f k8s/monitoring/grafana/configmap.yaml
+          kubectl apply -f k8s/monitoring/grafana/deployment.yaml
+          kubectl apply -f k8s/monitoring/grafana/service.yaml
+
+      - name: Wait for Grafana
+        run: kubectl rollout status deployment/grafana -n monitoring --timeout=300s
+
+      - name: Show Monitoring Status
+        run: |
+          echo "===== MONITORING PODS ====="
+          kubectl get pods -n monitoring
+          echo "===== MONITORING SERVICES ====="
+          kubectl get svc -n monitoring
+          echo "===== GRAFANA URL ====="
+          kubectl get svc grafana-service -n monitoring \
+          -o=jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+# =========================================
+# DEPLOY MONITORING TO DEV
+# =========================================
+  monitoring-dev:
+    if: >
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.environment == 'dev' ||
+      github.event.inputs.environment == 'both'))
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Connect to DEV EKS
+        run: aws eks update-kubeconfig --name ${{ secrets.DEV_CLUSTER_NAME }} --region ap-south-1
+
+      - name: Create Monitoring Namespace
+        run: kubectl apply -f k8s/monitoring/namespace.yaml
+
+      # ✅ Create secret from GitHub Secrets
+      - name: Create Monitoring Secret
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          kubectl create secret generic monitoring-secret \
+            --namespace monitoring \
+            --from-literal=gmail-address="$GMAIL_ADDRESS" \
+            --from-literal=gmail-app-password="$GMAIL_APP_PASSWORD" \
+            --from-literal=grafana-admin-password="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Prometheus
+        run: |
+          kubectl apply -f k8s/monitoring/prometheus/clusterrole.yaml
+          kubectl apply -f k8s/monitoring/prometheus/pvc.yaml
+          kubectl apply -f k8s/monitoring/prometheus/configmap.yaml
+          kubectl apply -f k8s/monitoring/prometheus/deployment.yaml
+          kubectl apply -f k8s/monitoring/prometheus/service.yaml
+
+      - name: Deploy AlertManager
+        run: |
+          kubectl apply -f k8s/monitoring/alertmanager/configmap.yaml
+          kubectl apply -f k8s/monitoring/alertmanager/deployment.yaml
+          kubectl apply -f k8s/monitoring/alertmanager/service.yaml
+
+      - name: Deploy Grafana
+        run: |
+          kubectl apply -f k8s/monitoring/grafana/pvc.yaml
+          kubectl apply -f k8s/monitoring/grafana/configmap.yaml
+          kubectl apply -f k8s/monitoring/grafana/deployment.yaml
+          kubectl apply -f k8s/monitoring/grafana/service.yaml
+
+      - name: Wait for Grafana
+        run: kubectl rollout status deployment/grafana -n monitoring --timeout=300s
+
+      - name: Show Monitoring Status
+        run: |
+          echo "===== MONITORING PODS ====="
+          kubectl get pods -n monitoring
+          echo "===== MONITORING SERVICES ====="
+          kubectl get svc -n monitoring
+          echo "===== GRAFANA URL ====="
+          kubectl get svc grafana-service -n monitoring \
+          -o=jsonpath='{.status.loadBalancer.ingress[0].hostname}'
