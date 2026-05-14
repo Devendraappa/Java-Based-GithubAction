@@ -3,6 +3,7 @@ kind: ConfigMap
 metadata:
   name: alertmanager-config
   namespace: monitoring
+
 data:
   alertmanager.yml: |
     global:
@@ -18,11 +19,13 @@ data:
       group_interval: 5m
       repeat_interval: 4h
       receiver: 'gmail-alerts'
+
       routes:
       - match:
           severity: critical
         receiver: 'gmail-critical'
         repeat_interval: 1h
+
       - match:
           severity: warning
         receiver: 'gmail-warning'
@@ -31,9 +34,12 @@ data:
     receivers:
     - name: 'gmail-alerts'
       email_configs:
-      - to: '${GMAIL_ADDRESS}'
-        subject: '[BankApp] {{ .GroupLabels.alertname }}'
-        body: |
+      - to: 'kunedevendraappa@gmail.com'
+
+        headers:
+          Subject: '[BankApp] {{ .GroupLabels.alertname }}'
+
+        text: |
           {{ range .Alerts }}
           Alert: {{ .Annotations.summary }}
           Description: {{ .Annotations.description }}
@@ -43,10 +49,14 @@ data:
 
     - name: 'gmail-critical'
       email_configs:
-      - to: '${GMAIL_ADDRESS}'
-        subject: '🔴 [CRITICAL] BankApp - {{ .GroupLabels.alertname }}'
-        body: |
+      - to: 'kunedevendraappa@gmail.com'
+
+        headers:
+          Subject: '🔴 [CRITICAL] BankApp - {{ .GroupLabels.alertname }}'
+
+        text: |
           CRITICAL ALERT!
+
           {{ range .Alerts }}
           Alert: {{ .Annotations.summary }}
           Description: {{ .Annotations.description }}
@@ -55,10 +65,14 @@ data:
 
     - name: 'gmail-warning'
       email_configs:
-      - to: '${GMAIL_ADDRESS}'
-        subject: '🟡 [WARNING] BankApp - {{ .GroupLabels.alertname }}'
-        body: |
+      - to: 'kunedevendraappa@gmail.com'
+
+        headers:
+          Subject: '🟡 [WARNING] BankApp - {{ .GroupLabels.alertname }}'
+
+        text: |
           WARNING ALERT!
+
           {{ range .Alerts }}
           Alert: {{ .Annotations.summary }}
           Description: {{ .Annotations.description }}
