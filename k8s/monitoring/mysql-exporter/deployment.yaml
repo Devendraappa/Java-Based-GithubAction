@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter
+    spec:
+      containers:
+      - name: mysql-exporter
+        image: prom/mysqld-exporter:v0.15.0
+        args:
+        - "--mysqld.address=mysql-service.default.svc.cluster.local:3306"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        - name: DATA_SOURCE_NAME
+          value: "root:$(MYSQL_ROOT_PASSWORD)@tcp(mysql-service.default.svc.cluster.local:3306)/"
+        ports:
+        - containerPort: 9104
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
