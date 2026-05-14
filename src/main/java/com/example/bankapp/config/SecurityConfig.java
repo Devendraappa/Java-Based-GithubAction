@@ -26,35 +26,54 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         http
                 .csrf(csrf -> csrf.disable())
+
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers("/register").permitAll()
+
+                        // Public endpoints
+                        .requestMatchers(
+                                "/register",
+                                "/login",
+                                "/actuator/**"
+                        ).permitAll()
+
+                        // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
+
                 .formLogin(form -> form
                         .loginPage("/login")
                         .loginProcessingUrl("/login")
                         .defaultSuccessUrl("/dashboard", true)
                         .permitAll()
                 )
+
                 .logout(logout -> logout
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
-                        .logoutRequestMatcher(new AntPathRequestMatcher("/logout"))
+                        .logoutRequestMatcher(
+                                new AntPathRequestMatcher("/logout")
+                        )
                         .logoutSuccessUrl("/login?logout")
                         .permitAll()
                 )
+
                 .headers(headers -> headers
-                        .frameOptions(frameOptions -> frameOptions.sameOrigin())
+                        .frameOptions(frameOptions ->
+                                frameOptions.sameOrigin()
+                        )
                 );
 
         return http.build();
     }
 
     @Autowired
-    public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
-        auth.userDetailsService(accountService).passwordEncoder(passwordEncoder());
+    public void configureGlobal(AuthenticationManagerBuilder auth)
+            throws Exception {
 
+        auth.userDetailsService(accountService)
+                .passwordEncoder(passwordEncoder());
     }
 }
