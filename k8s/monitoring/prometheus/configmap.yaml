@@ -84,6 +84,7 @@ data:
       # BankApp specific
       # =========================================
       - job_name: 'bankapp'
+        metrics_path: '/actuator/prometheus'
         kubernetes_sd_configs:
         - role: pod
           namespaces:
