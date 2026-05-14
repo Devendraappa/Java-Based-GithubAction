@@ -13,16 +13,19 @@ rules:
   resources:
   - nodes
   - nodes/proxy
+  - nodes/metrics       # ← node metrics access
   - services
   - endpoints
   - pods
   verbs: ["get", "list", "watch"]
-- apiGroups:
-  - extensions
+- apiGroups: ["extensions"]
   resources:
   - ingresses
   verbs: ["get", "list", "watch"]
-- nonResourceURLs: ["/metrics"]
+# ✅ Added cadvisor metrics access
+- nonResourceURLs:
+  - "/metrics"
+  - "/metrics/cadvisor"
   verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -37,5 +40,3 @@ subjects:
 - kind: ServiceAccount
   name: prometheus
   namespace: monitoring
-
-  
