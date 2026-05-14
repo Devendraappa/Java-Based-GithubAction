@@ -15,17 +15,7 @@ spec:
     spec:
       containers:
       - name: mysql-exporter
-        image: prom/mysqld-exporter:v0.15.0
-        args:
-        - "--mysqld.address=mysql-service.default.svc.cluster.local:3306"
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: mysql-root-password
-        - name: DATA_SOURCE_NAME
-          value: "root:$(MYSQL_ROOT_PASSWORD)@tcp(mysql-service.default.svc.cluster.local:3306)/"
+        image: prom/mysqld-exporter:v0.14.0    # ← downgrade to v0.14.0
         ports:
         - containerPort: 9104
         resources:
@@ -35,3 +25,12 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "200m"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        # ✅ v0.14.0 supports DATA_SOURCE_NAME directly
+        - name: DATA_SOURCE_NAME
+          value: "root:$(MYSQL_ROOT_PASSWORD)@(mysql-service.default.svc.cluster.local:3306)/"
