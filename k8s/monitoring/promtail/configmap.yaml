@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: monitoring
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+
+    positions:
+      filename: /tmp/positions.yaml
+
+    clients:
+    - url: http://loki-service.monitoring.svc.cluster.local:3100/loki/api/v1/push
+
+    scrape_configs:
+
+      # ✅ Collect ALL pod logs automatically
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+
+        # Only scrape pods with annotation
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: drop
+          regex: "false"
+
+        # Add namespace label
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+
+        # Add pod name label
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+
+        # Add container name label
+        - source_labels: [__meta_kubernetes_pod_container_name]
+          target_label: container
+
+        # Add app label
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          target_label: app
+
+        # Log file path
+        - source_labels: [__meta_kubernetes_pod_uid,
+                          __meta_kubernetes_pod_container_name]
+          target_label: __path__
+          separator: /
+          replacement: /var/log/pods/*$1/*.log
+
+      # ✅ Specifically tag bankapp logs
+      - job_name: bankapp
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names: [default]
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: bankapp
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_uid,
+                          __meta_kubernetes_pod_container_name]
+          target_label: __path__
+          separator: /
+          replacement: /var/log/pods/*$1/*.log
+
+      # ✅ MySQL logs
+      - job_name: mysql
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names: [default]
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: mysql
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+        - source_labels: [__meta_kubernetes_pod_uid,
+                          __meta_kubernetes_pod_container_name]
+          target_label: __path__
+          separator: /
+          replacement: /var/log/pods/*$1/*.log

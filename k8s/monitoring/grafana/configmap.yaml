@@ -13,7 +13,14 @@ data:
       isDefault: true
       access: proxy
       editable: true
-
+      # ✅ Add Loki for logs
+    - name: Loki
+      type: loki
+      url: http://loki-service.monitoring.svc.cluster.local:3100
+      access: proxy
+      jsonData:
+        maxLines: 1000
+        
   dashboards.yaml: |
     apiVersion: 1
     providers:
