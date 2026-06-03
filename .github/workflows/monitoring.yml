@@ -77,6 +77,16 @@ jobs:
           # kube-state-metrics
           kubectl apply -f k8s/monitoring/kube-state-metrics.yaml
 
+      - name: Deploy Node Exporter
+        run: |
+          kubectl apply -f k8s/monitoring/node-exporter/daemonset.yaml
+          kubectl apply -f k8s/monitoring/node-exporter/service.yaml
+
+      - name: Deploy MySQL Exporter
+        run: |          
+          kubectl apply -f k8s/monitoring/mysql-exporter/deployment.yaml
+          kubectl apply -f k8s/monitoring/mysql-exporter/service.yaml
+
       - name: Deploy Loki
         run: |
           kubectl apply -f k8s/monitoring/loki/pvc.yaml
