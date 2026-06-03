@@ -46,34 +46,24 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Cache Maven Repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-
-
       - name: Resolve Maven Dependencies
         run: mvn dependency:resolve
 
-      - name: Run Trivy Filesystem Scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          scanners: 'vuln'
-          timeout: '10m'
-          format: 'table'
-          exit-code: '0'
-
-      - name: Install Gitleaks
+      - name: Trivy Installation
         run: |
-          wget https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
-          tar -xzf gitleaks_linux_x64.tar.gz
-          sudo mv gitleaks /usr/local/bin/
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
 
-      - name: Run Gitleaks Scan
+      - name: Trivy FS Scan
+        run: trivy fs --scanners vuln .
+
+      - name: Gitleaks Installation
+        run: sudo apt install gitleaks -y
+
+      - name: Gitleaks Code Scan
         run: |
           gitleaks detect \
             --source . \
@@ -120,7 +110,7 @@ jobs:
       - name: Build Project
         run: mvn clean package --batch-mode -DskipTests
 
-      - name: Upload JAR Artifact
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
@@ -138,7 +128,7 @@ jobs:
             -Dsonar.sources=src/main/java
             -Dsonar.tests=src/test/java
 
-      - name: SonarQube Quality Gate Check
+      - name: SonarQube Quality Gate check
         uses: sonarsource/sonarqube-quality-gate-action@master
         with:
           pollingTimeoutSec: 600
