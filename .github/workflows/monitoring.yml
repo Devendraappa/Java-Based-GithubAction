@@ -77,6 +77,31 @@ jobs:
           # kube-state-metrics
           kubectl apply -f k8s/monitoring/kube-state-metrics.yaml
 
+      - name: Deploy Loki
+        run: |
+          kubectl apply -f k8s/monitoring/loki/pvc.yaml
+          kubectl apply -f k8s/monitoring/loki/configmap.yaml
+          kubectl apply -f k8s/monitoring/loki/deployment.yaml
+          kubectl apply -f k8s/monitoring/loki/service.yaml
+          kubectl rollout status deployment/loki \
+            -n monitoring --timeout=120s
+
+      - name: Deploy Promtail
+        run: |
+          kubectl apply -f k8s/monitoring/promtail/serviceaccount.yaml
+          kubectl apply -f k8s/monitoring/promtail/configmap.yaml
+          kubectl apply -f k8s/monitoring/promtail/daemonset.yaml
+
+      - name: Verify Logging Stack
+        run: |
+          echo "===== LOKI POD ====="
+          kubectl get pods -n monitoring | grep loki
+
+          echo "===== PROMTAIL PODS (one per node) ====="
+          kubectl get daemonset promtail -n monitoring
+          kubectl get pods -n monitoring | grep promtail
+
+
       - name: Deploy AlertManager
         run: |
           kubectl apply -f k8s/monitoring/alertmanager/configmap.yaml
@@ -175,6 +200,31 @@ jobs:
           kubectl apply -f k8s/monitoring/prometheus/service.yaml
           # kube-state-metrics
           kubectl apply -f k8s/monitoring/kube-state-metrics.yaml
+
+      - name: Deploy Loki
+        run: |
+          kubectl apply -f k8s/monitoring/loki/pvc.yaml
+          kubectl apply -f k8s/monitoring/loki/configmap.yaml
+          kubectl apply -f k8s/monitoring/loki/deployment.yaml
+          kubectl apply -f k8s/monitoring/loki/service.yaml
+          kubectl rollout status deployment/loki \
+            -n monitoring --timeout=120s
+
+      - name: Deploy Promtail
+        run: |
+          kubectl apply -f k8s/monitoring/promtail/serviceaccount.yaml
+          kubectl apply -f k8s/monitoring/promtail/configmap.yaml
+          kubectl apply -f k8s/monitoring/promtail/daemonset.yaml
+
+      - name: Verify Logging Stack
+        run: |
+          echo "===== LOKI POD ====="
+          kubectl get pods -n monitoring | grep loki
+
+          echo "===== PROMTAIL PODS (one per node) ====="
+          kubectl get daemonset promtail -n monitoring
+          kubectl get pods -n monitoring | grep promtail
+      
 
       - name: Deploy AlertManager
         run: |
