@@ -13,13 +13,22 @@ spec:
       labels:
         app: loki
     spec:
+      securityContext:
+        fsGroup: 10001
+
       containers:
       - name: loki
         image: grafana/loki:2.9.8
+
+        securityContext:
+          runAsUser: 0
+
         args:
         - -config.file=/etc/loki/loki.yaml
+
         ports:
         - containerPort: 3100
+
         resources:
           requests:
             memory: "256Mi"
@@ -27,27 +36,33 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "200m"
+
         readinessProbe:
           httpGet:
             path: /ready
             port: 3100
           initialDelaySeconds: 30
           periodSeconds: 10
+
         livenessProbe:
           httpGet:
-            path: /healthy
+            path: /ready
             port: 3100
           initialDelaySeconds: 60
           periodSeconds: 15
+
         volumeMounts:
         - name: loki-config
           mountPath: /etc/loki
+
         - name: loki-storage
           mountPath: /loki
+
       volumes:
       - name: loki-config
         configMap:
           name: loki-config
+
       - name: loki-storage
         persistentVolumeClaim:
           claimName: loki-pvc
