@@ -151,6 +151,14 @@ data:
         static_configs:
         - targets:
           - 'node-exporter-service.monitoring.svc.cluster.local:9100'
+      
+      # CoreDNS Metrics
+      # ✅ NEW - Fix kube-dns target DOWN
+      # =========================================
+      - job_name: 'coredns'
+        static_configs:
+        - targets:
+          - 'kube-dns.kube-system.svc.cluster.local:9153'
 
   alert-rules.yml: |
     groups:
